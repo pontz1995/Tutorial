@@ -1,0 +1,2 @@
+NanoGUITutorial.exe : NanoGUI
+	g++ main.cpp -o NanoGUITutorial.exe -I./nanogui/include/nanogui -L./nanogui/build/Release -l./nanogui/build/Release/nanogui.lib -lNanoGUI -lglfw3 -lopengl32 -lgdi32 -lglew32 -std=c++17
