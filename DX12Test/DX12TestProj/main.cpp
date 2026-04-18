@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <tchar.h>
+#include <assert.h>
 #ifdef _DEBUG
 #include <iostream>
 #endif
@@ -21,9 +22,17 @@ ID3D12CommandAllocator* _cmdAllocator = nullptr;
 ID3D12GraphicsCommandList* _cmdList = nullptr;
 ID3D12CommandQueue* _cmdQueue = nullptr;
 ID3D12DescriptorHeap* _rtvHeaps = nullptr;
+ID3D12Fence* _fence = nullptr;
+UINT64 _fenceVal = 0; 
+std::vector<ID3D12Resource*> _backBuffers = {};
+
 
 HRESULT InitDX(HWND hwnd);
 HRESULT Swapchain();
+#ifdef _DEBUG
+void EnableDebugLayer();
+#endif
+
 
 // @brief コンソール画面にフォーマット付き文字列を表示
 void DebugOutputFormatString(const char* format, ...)
@@ -53,7 +62,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #endif
 {
 	DebugOutputFormatString("Show Window Test.");
-	getchar();
+	int c = getchar();
 
 	// ウィンドウクラスの生成＆登録
 	WNDCLASSEX w = {};
@@ -81,10 +90,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		w.hInstance, // 呼び出しアプリケーションハンドル
 		nullptr); // 追加パラメーター
 		
-	ShowWindow(hwnd, SW_SHOW); // ウィンドウ表示
-	
+
+#ifdef _DEBUG
+	EnableDebugLayer();
+#endif
 	InitDX(hwnd);
-	Swapchain();
+
+	ShowWindow(hwnd, SW_SHOW); // ウィンドウ表示
+
 
 	// メッセージループ
 	MSG msg = {};
@@ -95,11 +108,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
-
 		if (msg.message == WM_QUIT)
 		{
 			break;
 		}
+		Swapchain();
 	}
 
 	UnregisterClass(w.lpszClassName, w.hInstance);
@@ -131,7 +144,11 @@ HRESULT InitDX(HWND hwnd)
 		}
 		if (!_dev) return result;
 
+#ifdef _DEBUG
+		result = CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&_dxgiFactory));
+#else
 		result = CreateDXGIFactory1(IID_PPV_ARGS(&_dxgiFactory));
+#endif
 		if (result != S_OK) return result;
 	}
 
@@ -180,7 +197,7 @@ HRESULT InitDX(HWND hwnd)
 		result = _swapChain->GetDesc(&swcDesc);
 		if (result != S_OK) return result;
 
-		std::vector<ID3D12Resource*> _backBuffers(swcDesc.BufferCount);
+		_backBuffers = std::vector<ID3D12Resource*>(swcDesc.BufferCount);
 		D3D12_CPU_DESCRIPTOR_HANDLE handle = _rtvHeaps->GetCPUDescriptorHandleForHeapStart();
 		for (UINT idx = 0; idx < swcDesc.BufferCount; ++idx)
 		{
@@ -191,16 +208,30 @@ HRESULT InitDX(HWND hwnd)
 			handle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		}
 	}
+
+	{// フェンス
+		result = _dev->CreateFence(_fenceVal, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&_fence));
+	}
+
 	return result;
 }
 
 HRESULT Swapchain()
 {
-	HRESULT result;
-
-	result = _cmdAllocator->Reset();
+	HRESULT result = S_FALSE;
 
 	UINT bbIdx = _swapChain->GetCurrentBackBufferIndex();
+
+	// リソースバリア
+	D3D12_RESOURCE_BARRIER BarrierDesc = {};
+	BarrierDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	BarrierDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	BarrierDesc.Transition.pResource = _backBuffers[bbIdx];
+	BarrierDesc.Transition.Subresource = 0;
+	BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+	BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	_cmdList->ResourceBarrier(1, &BarrierDesc);
+
 	auto rtvH = _rtvHeaps->GetCPUDescriptorHandleForHeapStart();
 	rtvH.ptr += bbIdx * _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	_cmdList->OMSetRenderTargets(1, &rtvH, true, nullptr); // レンダーターゲットをバックバッファにセット
@@ -208,13 +239,44 @@ HRESULT Swapchain()
 	float clearColor[] = { 1.0f, 1.0f, 0.0f, 1.0f };
 	_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr); // 画面クリア
 
+	// リソースバリア
+	BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	BarrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+	_cmdList->ResourceBarrier(1, &BarrierDesc);
+
 	result = _cmdList->Close(); // 命令のクローズ
 	ID3D12CommandList* cmdlists[] = { _cmdList };
 	_cmdQueue->ExecuteCommandLists(1, cmdlists); // コマンド実行
+
+	_cmdQueue->Signal(_fence, ++_fenceVal);
+	if (_fence->GetCompletedValue() != _fenceVal)
+	{
+		HANDLE event = CreateEvent(nullptr, false, false, nullptr); // イベントハンドルの取得
+		if (!event)
+		{
+			assert(false);
+			return S_FALSE;
+		}
+		else
+		{
+			_fence->SetEventOnCompletion(_fenceVal, event);
+			WaitForSingleObject(event, INFINITE); // イベントが発生するまで待ち続ける
+			CloseHandle(event);
+		}
+	}
+
 	result = _cmdAllocator->Reset(); // キューをクリア
 	result = _cmdList->Reset(_cmdAllocator, nullptr); // クローズ状態を解除して再びコマンドリストを溜める準備
 
 	result = _swapChain->Present(1, 0);
 
 	return result;
+}
+
+void EnableDebugLayer()
+{
+	ID3D12Debug* debugLayer = nullptr;
+	HRESULT result = D3D12GetDebugInterface(IID_PPV_ARGS(&debugLayer));
+	debugLayer->EnableDebugLayer();
+	debugLayer->Release();
 }
