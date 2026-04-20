@@ -1,19 +1,18 @@
 #include <Windows.h>
 #include <tchar.h>
-#include <assert.h>
 #ifdef _DEBUG
 #include <iostream>
 #endif
-//DirectX12
-#include <d3d12.h>
-#include <dxgi1_6.h>
-#pragma comment(lib, "d3d12.lib")
-#pragma comment(lib, "dxgi.lib")
-using namespace std;
-#include <vector>
 
-#define WINDOW_WIDTH 720
-#define WINDOW_HEIGHT 480
+#include "main.h"
+#include "Scene.h"
+using namespace std;
+
+HRESULT InitDX(HWND hwnd);
+HRESULT Swapchain(Scene* scene);
+#ifdef _DEBUG
+void EnableDebugLayer();
+#endif
 
 ID3D12Device* _dev = nullptr;
 IDXGIFactory6* _dxgiFactory = nullptr;
@@ -23,16 +22,8 @@ ID3D12GraphicsCommandList* _cmdList = nullptr;
 ID3D12CommandQueue* _cmdQueue = nullptr;
 ID3D12DescriptorHeap* _rtvHeaps = nullptr;
 ID3D12Fence* _fence = nullptr;
-UINT64 _fenceVal = 0; 
+UINT64 _fenceVal = 0;
 std::vector<ID3D12Resource*> _backBuffers = {};
-
-
-HRESULT InitDX(HWND hwnd);
-HRESULT Swapchain();
-#ifdef _DEBUG
-void EnableDebugLayer();
-#endif
-
 
 // @brief コンソール画面にフォーマット付き文字列を表示
 void DebugOutputFormatString(const char* format, ...)
@@ -98,6 +89,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 	ShowWindow(hwnd, SW_SHOW); // ウィンドウ表示
 
+	// シーンの生成
+	Scene* scene = Scene::Create();
 
 	// メッセージループ
 	MSG msg = {};
@@ -110,9 +103,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		}
 		if (msg.message == WM_QUIT)
 		{
+			scene->~Scene();
 			break;
 		}
-		Swapchain();
+		Swapchain(scene);
 	}
 
 	UnregisterClass(w.lpszClassName, w.hInstance);
@@ -216,7 +210,7 @@ HRESULT InitDX(HWND hwnd)
 	return result;
 }
 
-HRESULT Swapchain()
+HRESULT Swapchain(Scene* scene)
 {
 	HRESULT result = S_FALSE;
 
@@ -238,6 +232,9 @@ HRESULT Swapchain()
 
 	float clearColor[] = { 1.0f, 1.0f, 0.0f, 1.0f };
 	_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr); // 画面クリア
+
+	//シーンの描画
+	scene->Render();
 
 	// リソースバリア
 	BarrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
