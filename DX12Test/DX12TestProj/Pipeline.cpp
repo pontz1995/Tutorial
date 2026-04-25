@@ -40,7 +40,7 @@ Pipeline* Pipeline::Create(
 	gPipeline.SampleDesc.Count = 1;
 	gPipeline.SampleDesc.Quality = 0;
 
-	ret->rootSig = ret->CreateRootSignature();
+	ret->CreateRootSignature();
 	gPipeline.pRootSignature = ret->rootSig.Get();
 
 	auto result = _dev->CreateGraphicsPipelineState(&gPipeline, IID_PPV_ARGS(&ret->pipelineState));
@@ -53,7 +53,7 @@ Pipeline* Pipeline::Create(
 	return ret;
 }
 
-ID3D12RootSignature* Pipeline::CreateRootSignature()
+void Pipeline::CreateRootSignature()
 {
 	D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
 	rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
@@ -69,19 +69,18 @@ ID3D12RootSignature* Pipeline::CreateRootSignature()
 		std::copy_n((char*)errBlob->GetBufferPointer(), errBlob->GetBufferSize(), err.begin());
 		OutputDebugStringA(err.c_str());
 
-		return nullptr;
+		return;
 	}
 
-	ID3D12RootSignature* sig = nullptr;
 	result = _dev->CreateRootSignature(
 		0,
 		signatureBlob->GetBufferPointer(),
 		signatureBlob->GetBufferSize(),
-		IID_PPV_ARGS(&sig)
+		IID_PPV_ARGS(&rootSig)
 	);
 	signatureBlob->Release();
 
-	return sig;
+	if(errBlob) errBlob->Release();
 }
 
 Pipeline::Pipeline():
@@ -92,4 +91,6 @@ Pipeline::Pipeline():
 
 Pipeline::~Pipeline()
 {
+	pipelineState.Reset();
+	rootSig.Reset();
 }

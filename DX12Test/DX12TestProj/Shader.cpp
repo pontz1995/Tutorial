@@ -68,6 +68,8 @@ Shader* Shader::Create(const wchar_t* vsPath, const wchar_t* psPath)
 		return nullptr;
 	}
 
+	if (errBlob) errBlob->Release();
+
 	return ret;
 }
 
@@ -79,4 +81,6 @@ Shader::Shader():
 
 Shader::~Shader()
 {
+	vsBlob.Reset();
+	psBlob.Reset();
 }

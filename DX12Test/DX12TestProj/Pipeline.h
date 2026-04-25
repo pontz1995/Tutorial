@@ -17,12 +17,12 @@ public:
 		size_t numInputLayout
 	);
 
-	ID3D12RootSignature* CreateRootSignature();
-
 	ID3D12PipelineState* GetPipelineState() const { return pipelineState.Get(); }
 	ID3D12RootSignature* GetRootSignature() const { return rootSig.Get(); }
 
 protected:
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState;
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSig;
+	
+	void CreateRootSignature();
 };

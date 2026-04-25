@@ -26,8 +26,8 @@ Scene* Scene::Create()
 	ret->pipeline.reset(Pipeline::Create(
 		ret->shader->GetVSBlob(),
 		ret->shader->GetPSBlob(),
-		ret->polygon->inputLayout.data(),
-		ret->polygon->inputLayout.size()
+		ret->polygon->GetInputLayout().data(),
+		ret->polygon->GetInputLayout().size()
 	));
 
 	return ret;
@@ -40,12 +40,14 @@ void Scene::Update()
 void Scene::Render()
 {
 	_cmdList->SetPipelineState(pipeline->GetPipelineState());
-	_cmdList->SetGraphicsRootSignature(pipeline->CreateRootSignature());
+	_cmdList->SetGraphicsRootSignature(pipeline->GetRootSignature());
 	_cmdList->RSSetViewports(1, &viewport);
 	_cmdList->RSSetScissorRects(1, &scissorRect);
-	_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	_cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	_cmdList->IASetVertexBuffers(0, 1, polygon->GetVBView());
-	_cmdList->DrawInstanced(3, 1, 0, 0);
+	_cmdList->IASetIndexBuffer(polygon->GetIBView());
+	_cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+
 }
 
 Scene::Scene():
@@ -59,4 +61,7 @@ Scene::Scene():
 
 Scene::~Scene()
 {
+	polygon.reset();
+	shader.reset();
+	pipeline.reset();
 }

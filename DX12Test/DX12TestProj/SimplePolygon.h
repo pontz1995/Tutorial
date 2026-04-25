@@ -14,14 +14,17 @@ public:
 	virtual ~SimplePolygon();
 	static SimplePolygon* Create();
 
-	std::array<DirectX::XMFLOAT3, 3> vertics;
-	std::array<D3D12_INPUT_ELEMENT_DESC, 1> inputLayout;
 
+	std::array<D3D12_INPUT_ELEMENT_DESC, 1> GetInputLayout() { return inputLayout; }
 	D3D12_VERTEX_BUFFER_VIEW* GetVBView() { return &vbView; }
+	D3D12_INDEX_BUFFER_VIEW* GetIBView() { return &ibView; }
 
 protected:
-	Microsoft::WRL::ComPtr<ID3D12Resource> vertBuff;
-	D3D12_VERTEX_BUFFER_VIEW vbView;
 
+	std::array<D3D12_INPUT_ELEMENT_DESC, 1> inputLayout;
+	Microsoft::WRL::ComPtr<ID3D12Resource> vertBuff;
+	Microsoft::WRL::ComPtr<ID3D12Resource> idxBuff;
+	D3D12_VERTEX_BUFFER_VIEW vbView;
+	D3D12_INDEX_BUFFER_VIEW ibView;
 
 };

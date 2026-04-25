@@ -9,11 +9,12 @@ SimplePolygon* SimplePolygon::Create()
 	SimplePolygon* ret = new SimplePolygon();
 	
 	//頂点情報
-	ret->vertics = std::array<XMFLOAT3, 3>
+	std::array<XMFLOAT3, 4> vertics =
 	{
-		XMFLOAT3{-1.0f, -1.0f, 0.0f}, //左下
-		XMFLOAT3{-1.0f,  1.0f, 0.0f}, //左上
-		XMFLOAT3{ 1.0f, -1.0f, 0.0f}, //右下
+		XMFLOAT3{-0.4f, -0.7f, 0.0f}, //左下
+		XMFLOAT3{-0.4f,  0.7f, 0.0f}, //左上
+		XMFLOAT3{ 0.4f, -0.7f, 0.0f}, //右下
+		XMFLOAT3{ 0.4f,  0.7f, 0.0f}, //右上
 	};
 
 	//バッファー
@@ -22,6 +23,7 @@ SimplePolygon* SimplePolygon::Create()
 	heapprop.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 	heapprop.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
 
+	//頂点バッファー
 	D3D12_RESOURCE_DESC resdesc = {};
 	resdesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER; //バッファーに使う
 	resdesc.Width = sizeof(vertics);
@@ -33,6 +35,7 @@ SimplePolygon* SimplePolygon::Create()
 	resdesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 	resdesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
+	// 転送用リソースの作成
 	auto result = _dev->CreateCommittedResource(
 		&heapprop,
 		D3D12_HEAP_FLAG_NONE,
@@ -46,13 +49,14 @@ SimplePolygon* SimplePolygon::Create()
 	//バッファーをマップ
 	XMFLOAT3* vertMap = nullptr;
 	result = ret->vertBuff->Map(0, nullptr, (void**)&vertMap);
-	std::copy(std::begin(ret->vertics), std::end(ret->vertics), vertMap);
+	std::copy(std::begin(vertics), std::end(vertics), vertMap);
 	ret->vertBuff->Unmap(0, nullptr);
+	if (vertMap) vertMap = nullptr;
 
 	//頂点バッファビュー
 	ret->vbView.BufferLocation = ret->vertBuff->GetGPUVirtualAddress(); //バッファーの仮想アドレス
-	ret->vbView.SizeInBytes = sizeof(ret->vertics);
-	ret->vbView.StrideInBytes = sizeof(ret->vertics[0]);
+	ret->vbView.SizeInBytes = sizeof(vertics);
+	ret->vbView.StrideInBytes = sizeof(vertics[0]);
 
 	// 頂点レイアウト
 	ret->inputLayout = std::array<D3D12_INPUT_ELEMENT_DESC, 1>
@@ -67,18 +71,52 @@ SimplePolygon* SimplePolygon::Create()
 	};
 
 
+	// インデックスバッファー
+	unsigned short indicies[] = { 
+		0, 1, 2,
+		2, 1, 3 
+	};
+
+	ret->idxBuff = nullptr;
+	resdesc.Width = sizeof(indicies); //バッファーのサイズ以外、頂点バッファーの設定を使いまわしてよい
+	
+	// 転送用リソースの作成
+	result = _dev->CreateCommittedResource(
+		&heapprop,
+		D3D12_HEAP_FLAG_NONE,
+		&resdesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&ret->idxBuff)
+	);
+
+	//バッファーをマップ
+	unsigned short* idxMap = nullptr;
+	result = ret->idxBuff->Map(0, nullptr, (void**)&idxMap);
+	std::copy(std::begin(indicies), std::end(indicies), idxMap);
+	ret->idxBuff->Unmap(0, nullptr);
+	if (idxMap) idxMap = nullptr;
+
+	// インデックスバッファビュー
+	ret->ibView = {};
+	ret->ibView.BufferLocation = ret->idxBuff->GetGPUVirtualAddress();
+	ret->ibView.Format = DXGI_FORMAT_R16_UINT;
+	ret->ibView.SizeInBytes = sizeof(indicies);
+
 	return ret;
 }
 
 SimplePolygon::SimplePolygon():
-	vertics(std::array<XMFLOAT3, 3>{}),
 	inputLayout(std::array<D3D12_INPUT_ELEMENT_DESC, 1>{}),
 	vertBuff(nullptr),
-	vbView(D3D12_VERTEX_BUFFER_VIEW{})
+	idxBuff(nullptr),
+	vbView(D3D12_VERTEX_BUFFER_VIEW{}),
+	ibView(D3D12_INDEX_BUFFER_VIEW{})
 {
 }
 
 SimplePolygon::~SimplePolygon()
 {
-
+	vertBuff.Reset();
+	idxBuff.Reset();
 }

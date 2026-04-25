@@ -8,7 +8,8 @@
 #include "Scene.h"
 using namespace std;
 
-HRESULT InitDX(HWND hwnd);
+HRESULT InitDX(HWND hwnd); 
+void UninitDX();
 HRESULT Swapchain(Scene* scene);
 #ifdef _DEBUG
 void EnableDebugLayer();
@@ -24,6 +25,10 @@ ID3D12DescriptorHeap* _rtvHeaps = nullptr;
 ID3D12Fence* _fence = nullptr;
 UINT64 _fenceVal = 0;
 std::vector<ID3D12Resource*> _backBuffers = {};
+
+#ifdef _DEBUG
+Microsoft::WRL::ComPtr<ID3D12DebugDevice> _debugDevice = nullptr;
+#endif
 
 // @brief コンソール画面にフォーマット付き文字列を表示
 void DebugOutputFormatString(const char* format, ...)
@@ -86,11 +91,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	EnableDebugLayer();
 #endif
 	InitDX(hwnd);
-
+#ifdef _DEBUG
+	_dev->QueryInterface(IID_PPV_ARGS(&_debugDevice)); // デバッグデバイスの取得
+#endif
 	ShowWindow(hwnd, SW_SHOW); // ウィンドウ表示
 
 	// シーンの生成
-	Scene* scene = Scene::Create();
+	std::unique_ptr<Scene> scene(Scene::Create());
 
 	// メッセージループ
 	MSG msg = {};
@@ -103,10 +110,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		}
 		if (msg.message == WM_QUIT)
 		{
-			scene->~Scene();
+			scene.reset();
+			UninitDX();
+
 			break;
 		}
-		Swapchain(scene);
+		Swapchain(scene.get());
 	}
 
 	UnregisterClass(w.lpszClassName, w.hInstance);
@@ -276,4 +285,25 @@ void EnableDebugLayer()
 	HRESULT result = D3D12GetDebugInterface(IID_PPV_ARGS(&debugLayer));
 	debugLayer->EnableDebugLayer();
 	debugLayer->Release();
+}
+
+void UninitDX()
+{
+	for (auto& backBuffer : _backBuffers)
+	{
+		if (backBuffer) backBuffer->Release();
+	}
+	if (_rtvHeaps) _rtvHeaps->Release();
+	if (_swapChain) _swapChain->Release();
+	if (_cmdQueue) _cmdQueue->Release();
+	if (_cmdList) _cmdList->Release();
+	if (_cmdAllocator) _cmdAllocator->Release();
+	if (_fence) _fence->Release();
+	if (_dxgiFactory) _dxgiFactory->Release();
+	if (_dev) _dev->Release();
+
+#ifdef _DEBUG
+	_debugDevice->ReportLiveDeviceObjects(D3D12_RLDO_DETAIL | D3D12_RLDO_IGNORE_INTERNAL); // デバッグレイヤーに生きているオブジェクトを報告
+	_debugDevice.Reset();
+#endif
 }
